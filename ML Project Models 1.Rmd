@@ -1,0 +1,520 @@
+---
+title: "Machine Learning Project"
+author: ""
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#R Markdown
+
+#Reading the Data:
+
+```{r}
+library(tidyverse)
+rm(list=ls())
+
+airline_data <- read.csv("./Data/AirlineCustomerSatisfaction.csv", header=T, stringsAsFactors=T)
+airline_data <- na.omit(airline_data)
+summary(airline_data)
+```
+
+
+#Logistics Regression Model
+
+Reasons to us the Logistic Regression Model: 
+
+1. Generally easier to understand and interpret these models.
+2. The model is faster to train than other models.
+3. They can work well in scenerios in which the fit is not the best.
+
+```{r}
+summary(as.factor(airline_data$satisfaction))
+summary(as.factor(airline_data$Customer.Type))
+
+## Data Partition: Training v.s. Test split
+train_data_indices <- sample(1:nrow(airline_data), 0.8*nrow(airline_data))
+train_data <- airline_data[train_data_indices,]
+test_data <- airline_data[-train_data_indices,]
+# Record the size of training data and test data
+train_obs <- dim(train_data)[1]
+
+```
+
+#Fitting a logistic regression model 
+
+
+```{r}
+lm_sat <- glm(satisfaction ~., 
+             family=binomial(link='logit'), 
+             data= train_data) 
+summary(fit_1) 
+
+```
+
+All the variables in the model are significant.
+
+```{r}
+lm_cust<- glm(Customer.Type ~., 
+             family=binomial(link='logit'), 
+             data= train_data) 
+summary(fit_2) 
+```
+
+
+# Backward Selection
+```{r}
+lm_bwd_sat = step(lm_sat, direction = 'backward', k = log(train_obs))
+
+lm_bwd_cust = step(lm_cust, direction = 'backward', k = log(train_obs))
+
+```
+Doesn't eliminate any features.
+
+#Significant Features 
+
+```{r}
+
+t1 <- summary(fit_1)
+t1$coefficients[t1$coefficients[,4] < 0.001,]
+```
+
+```{r}
+t2 <- summary(fit_2)
+t2$coefficients[t1$coefficients[,4] < 0.001,]
+```
+
+#Predict Logistic Model Performance against test data:
+```{r chunk7}
+# Model deployment
+lm_sat_pred <- predict(lm_sat, newdata = test_data, type = 'response') 
+lm_cust_pred <- predict(lm_cust, newdata = test_data, type = 'response') 
+
+
+lm_bwd_sat_pred <- predict(lm_bwd_sat, newdata = test_data, type = 'response')
+lm_bwd_cust_pred <- predict(lm_bwd_cust, newdata = test_data, type = 'response')
+
+
+```
+
+# Prediction Accuracy:
+```{r chunk8}
+# Test data error
+library(caret)
+lm_sat_acc <- confusionMatrix(factor(ifelse(lm_sat_pred>0.5, 'satisfied', 'dissatisfied')), test_data$satisfaction, positive = 'satisfied')
+lm_cust_acc <- confusionMatrix(factor(ifelse(lm_sat_pred>0.5, 'Loyal Customer', 'disloyal Customer')), test_data$Customer.Type, positive = 'Loyal Customer')
+
+
+```
+
+
+#Now, data is ready to run models 
+
+```{r}
+satisfied <- as.numeric(airline_data$satisfaction)
+customer_type <- as.numeric(airline_data$Customer.Type)
+```
+
+
+```{r}
+model_data <- fastDummies::dummy_cols(airline_data[,c(2,4:23)], select_columns = c("Gender", "Type.of.Travel", "Class"),
+   remove_selected_columns = TRUE)
+
+model_data$satisfied <- satisfied
+model_data$customer_type <- customer_type
+summary(model_data)
+```
+
+
+```{r}
+library(splitstackshape)
+set.seed(123456) # Set seed
+# Perform stratified sampling
+split_dat <- stratified(model_data, # Set dataset
+                       group = c("satisfied", "customer_type"), # Set variables to use for stratification
+                       size = 0.2,  # Set size of test set
+                       bothSets = TRUE ) # Return both training and test sets
+# Extract train data
+train_dat <- split_dat[[2]]
+# Extract test data
+test_dat <- split_dat[[1]]
+```
+
+```{r}
+names(train_dat)
+names(test_dat)
+
+sum(is.na(train_dat))
+sum(is.na(test_dat))
+
+summary(as.factor(train_dat$satisfaction))
+summary(as.factor(test_dat$satisfaction))
+
+
+```
+
+
+## Clustering K Means
+
+Reducing Data Set for Clustering:
+We will use 10% of the data to complete the clustering model (~13K records)
+```{r}
+set.seed(11111)
+total_obs <- dim(model_data)[1]
+## Data Partition: Training v.s. Test split
+cluster_data_indices <- sample(1:total_obs, 0.1*total_obs)
+cluster_data <- model_data[cluster_data_indices,]
+
+cluster_obs <- dim(cluster_data)[1]
+
+```
+
+```{r}
+# Scale data
+cluster_data1 <- scale(cluster_data[,1:25])
+
+cluster_data <- cbind.data.frame(cluster_data$satisfied, cluster_data$customer_type, cluster_data1)
+
+names(cluster_data)[1] <- "satisfied"
+names(cluster_data)[2] <- "customer_type"
+names(cluster_data)[25] <- "Class_Eco_Plus"
+dim(cluster_data)
+summary(cluster_data)
+cluster_data <- na.omit(cluster_data)
+set.seed(12345) # Set seed for reproducibility
+fit_1 <- kmeans(x = cluster_data[,3:27], # Set data as explanatory variables 
+                centers = 5,  # Set number of clusters
+                nstart = 25, # Set number of starts
+                iter.max = 100 ) # Set maximum number of iterations to use
+```
+
+```{r}
+# Extract clusters
+clusters_1 <- fit_1$cluster
+# Extract centers
+centers_1 <- fit_1$centers
+
+summary(as.factor(clusters_1))
+
+```
+
+Plot Data:
+```{r}
+cluster <- c(1: 5)
+# Extract centers
+center_df <- data.frame(cluster, centers_1)
+
+# Reshape the data
+center_reshape <- gather(center_df, features, values, Age:Class_Eco_Plus)
+# View first few rows
+head(center_reshape)
+
+# Create plot
+g_heat_1 <- ggplot(data = center_reshape, # Set dataset
+                   aes(x = features, y = cluster, fill = values)) + # Set aesthetics
+  scale_y_continuous(breaks = seq(1, 5, by = 1)) + # Set y axis breaks
+  geom_tile() + # Geom tile for heatmap
+  coord_equal() +  # Make scale the same for both axis
+  theme_set(theme_bw(base_size = 22) ) + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+                       mid = "white", # Choose mid color
+                       high = "red", # Choose high color
+                       midpoint =0, # Choose mid point
+                       space = "Lab", 
+                       na.value ="grey", # Choose NA value
+                       guide = "colourbar", # Set color bar
+                       aesthetics = "fill") + # Select aesthetics to apply
+  coord_flip() # Rotate plot to view names clearly
+# Generate plot
+g_heat_1
+
+fviz_cluster(fit_1, data = cluster_data[, c(-1, -2)],
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+```
+
+
+
+
+
+
+#RandomForest
+
+```{r}
+rf_mod <- randomForest(satisfaction~., # Set tree formula
+                       data = train_data, # Set dataset
+                       ntree = 1000) # Set number of trees to use
+rf_mod # View model
+```
+
+
+```{r View error}
+oob_error <- rf_mod$err.rate[,1] # Extract oob error
+plot_dat <- cbind.data.frame(rep(1:length(oob_error)), oob_error) # Create plot data
+names(plot_dat) <- c("trees", "oob_error") # Name plot data
+
+
+# Plot oob error
+g_1 <- ggplot(plot_dat, aes(x = trees, y = oob_error)) + # Set x as trees and y as error
+  geom_point(alpha = 0.5, color = "blue") + # Select geom point
+  theme_bw() + # Set theme
+  geom_smooth() + # Add smoothing line
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate")  # Set labels
+g_1 # Print plot
+```
+
+
+
+```{r}
+rf_preds <- predict(rf_mod, test_data, type = "prob") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+rf_pred_class <- rep("dissatisfied", nrow(rf_preds))
+rf_pred_class[rf_preds[,2] >= 0.5] <- "satisfied"
+
+t <- table(rf_pred_class, test_data$satisfaction) # Create table
+confusionMatrix(t, positive = "satisfied") # Produce confusion matrix
+```
+
+
+We can now try and tune the mtry and nodesize parameters. Here we will extract the out-of-bag predictions and use them in the confusion matrix to calculate sensitivity. 
+
+
+```{r}
+mtry_vals <- c(2, 4, 5, 7, 9, 12, 15, 20)
+nodesize_vals <- c(1, 10, 15, 50, 100, 150, 200, 500, 1000)
+
+params <- expand.grid(mtry_vals, nodesize_vals)
+names(params) <- c("mtry", "nodesize")
+acc_vec <- rep(NA, nrow(params))
+sens_vec <- rep(NA, nrow(params))
+
+for(i in 1:nrow(params)){
+  rf_mod <- randomForest(satisfaction ~., # Set tree formula
+                         data = train_data, # Set dataset
+                         ntree = 200,
+                         nodesize = params$nodesize[i],
+                         mtry = params$mtry[i]) # Set number of trees to use
+  rf_preds <-rf_mod$predicted # Create predictions for bagging model
+
+  t <- table(rf_preds,   train_data$satisfaction) # Create table
+  c <- confusionMatrix(t, positive = "satisfied") # Produce confusion matrix
+  
+  acc_vec[i] <- c$overall[1]
+  sens_vec[i] <- c$byClass[1]
+}
+```
+
+```{r}
+res_db <- cbind.data.frame(params, acc_vec, sens_vec)
+res_db$mtry <- as.factor(res_db$mtry) # Convert tree number to factor for plotting
+res_db$nodesize <- as.factor(res_db$nodesize) # Convert node size to factor for plotting
+g_1 <- ggplot(res_db, aes(y = mtry, x = nodesize, fill = acc_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$acc_vec), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "mtry", fill = "OOB Accuracy") # Set labels
+g_1 # Generate plot
+
+
+g_2 <- ggplot(res_db, aes(y = mtry, x = nodesize, fill = sens_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$sens_vec), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "Mtry", fill = "OOB Sensitivity") # Set labels
+g_2 # Generate plot
+
+```
+
+```{r }
+res_db[which(res_db$nodesize == 1),]
+```
+
+```{r}
+rf_mod_best <- randomForest(satisfaction ~., # Set tree formula
+                      data = train_data, # Set dataset
+                      ntree = 200,
+                      nodesize = 1,
+                      mtry = 9) # Set number of trees to use
+rf_mod_best
+
+oob_error_best <- rf_mod_best$err.rate[,1] # Extract oob error
+plot_dat_best <- cbind.data.frame(rep(1:length(oob_error_best)), oob_error_best) # Create plot data
+names(plot_dat_best) <- c("trees", "oob_error") # Name plot data
+
+
+rf_best_preds <- predict(rf_mod_best, test_data, type = "prob") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+rf_best_pred_class <- rep("dissatisfied", nrow(rf_best_preds))
+rf_best_pred_class[rf_best_preds[,2] >= 0.5] <- "satisfied"
+
+t_best <- table(rf_best_pred_class, test_data$satisfaction) # Create table
+confusionMatrix(t_best, positive = "satisfied") # Produce confusion matrix
+```
+
+
+```{r}
+rf_mod_best$err.rate
+
+```
+
+
+
+## Loyalty Random Forest
+```{r}
+rf_mod_loyalty <- randomForest(Customer.Type~., # Set tree formula
+                       data = train_data, # Set dataset
+                       ntree = 1000) # Set number of trees to use
+rf_mod_loyalty # View model
+```
+
+
+```{r View error}
+oob_error_loyalty <- rf_mod_loyalty$err.rate[,1] # Extract oob error
+plot_dat_loyalty <- cbind.data.frame(rep(1:length(oob_error_loyalty)), oob_error_loyalty) # Create plot data
+names(plot_dat_loyalty) <- c("trees", "oob_error") # Name plot data
+
+
+# Plot oob error
+g_1 <- ggplot(plot_dat_loyalty, aes(x = trees, y = oob_error)) + # Set x as trees and y as error
+  geom_point(alpha = 0.5, color = "blue") + # Select geom point
+  theme_bw() + # Set theme
+  geom_smooth() + # Add smoothing line
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "Error Rate v Number of Trees",
+       y = "Error Rate")  # Set labels
+g_1 # Print plot
+
+rf_preds_loyalty <- predict(rf_mod_loyalty, test_data, type = "prob") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+rf_pred_class_loyalty <- rep("disloyal Customer", nrow(rf_preds_loyalty))
+rf_pred_class_loyalty[rf_preds_loyalty[,2] >= 0.5] <- "Loyal Customer"
+
+t_loyalty <- table(rf_pred_class_loyalty, test_data$Customer.Type) # Create table
+confusionMatrix(t_loyalty, positive = "Loyal Customer") # Produce confusion matrix
+```
+
+```{r}
+mtry_vals <- c(2, 4, 5, 7, 9, 12, 15, 20)
+nodesize_vals <- c(1, 10, 15, 50, 100, 150, 200, 500, 1000)
+
+params <- expand.grid(mtry_vals, nodesize_vals)
+names(params) <- c("mtry", "nodesize")
+acc_vec <- rep(NA, nrow(params))
+sens_vec <- rep(NA, nrow(params))
+
+for(i in 1:nrow(params)){
+  rf_mod_loyalty <- randomForest(Customer.Type ~., # Set tree formula
+                         data = train_data, # Set dataset
+                         ntree = 200,
+                         nodesize = params$nodesize[i],
+                         mtry = params$mtry[i]) # Set number of trees to use
+  rf_preds_loyalty <-rf_mod_loyalty$predicted # Create predictions for bagging model
+
+  t <- table(rf_preds_loyalty,   train_data$Customer.Type) # Create table
+  c <- confusionMatrix(t, positive = "Loyal Customer") # Produce confusion matrix
+  
+  acc_vec[i] <- c$overall[1]
+  sens_vec[i] <- c$byClass[1]
+}
+```
+
+```{r}
+res_db2 <- cbind.data.frame(params, acc_vec, sens_vec)
+res_db2$mtry <- as.factor(res_db2$mtry) # Convert tree number to factor for plotting
+res_db2$nodesize <- as.factor(res_db2$nodesize) # Convert node size to factor for plotting
+g_3 <- ggplot(res_db2, aes(y = mtry, x = nodesize, fill = acc_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db2$acc_vec), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "mtry", fill = "OOB Accuracy") # Set labels
+g_3 # Generate plot
+
+
+g_4 <- ggplot(res_db2, aes(y = mtry, x = nodesize, fill = sens_vec)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db2$sens_vec), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(x = "Node Size", y = "Mtry", fill = "OOB Sensitivity") # Set labels
+g_4 # Generate plot
+
+```
+
+```{r }
+res_db2[which(res_db2$nodesize == 1),]
+```
+
+```{r}
+rf_mod_best_loyalty <- randomForest(Customer.Type ~., # Set tree formula
+                      data = train_data, # Set dataset
+                      ntree = 200,
+                      nodesize = 1,
+                      mtry = 4) # Set number of trees to use
+rf_mod_best_loyalty
+
+oob_error_best_loyalty <- rf_mod_best_loyalty$err.rate[,1] # Extract oob error
+plot_dat_best_loyalty <- cbind.data.frame(rep(1:length(oob_error_best_loyalty)), oob_error_best_loyalty) # Create plot data
+names(plot_dat_best_loyalty) <- c("trees", "oob_error") # Name plot data
+
+
+rf_best_preds_loyalty <- predict(rf_mod_best_loyalty, test_data, type = "prob") # Create predictions for random forest model
+
+# Convert predictions to classes, using 0.5
+rf_best_pred_class_loyalty <- rep("disloyal Customer", nrow(rf_best_preds_loyalty))
+rf_best_pred_class_loyalty[rf_best_preds_loyalty[,2] >= 0.5] <- "Loyal Customer"
+
+t_best_loyalty <- table(rf_best_pred_class_loyalty, test_data$Customer.Type) # Create table
+confusionMatrix(t_best_loyalty, positive = "Loyal Customer") # Produce confusion matrix
+```
+
+
+
+
+
+
+
+
+

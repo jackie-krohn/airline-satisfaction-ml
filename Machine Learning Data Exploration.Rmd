@@ -1,0 +1,259 @@
+---
+title: "Machine Learning Project Data Exploration"
+author: "Jackie Krohn"
+date: "2022-11-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+##Read Data
+```{r}
+library(tidyverse)
+airline_data <- read.csv("./Data/Invistico_Airline.csv", header=T, stringsAsFactors=T)
+head(airline_data)
+summary(airline_data)
+names(airline_data)
+ncol(airline_data)
+
+airline_data_incomplete <- airline_data %>%
+  select(everything()) %>% 
+  filter(!complete.cases(.))
+summary(airline_data_incomplete)
+
+incomplete_records <- nrow(airline_data_incomplete)
+incomplete_records
+```
+There are 393 NAs in flight delay data.
+
+##Vizualizations
+
+Missing Data Vizualization
+```{r}
+library(ggplot2)
+library(naniar)
+features_dependent <- names(airline_data)[c(1,3)]
+features <- names(airline_data)[-c(1,3)]
+vis_miss(airline_data[, features_dependent])
+vis_miss(airline_data[, features], warn_large_data = FALSE)
+
+perc_dissatisfied <- 58793/(58793+ 71087)
+
+
+
+```
+Less than 0.1% of the data is missing
+
+
+## Variable Exploration
+```{r}
+library(reshape)
+
+## Representation of Factors in variable
+g_0 <- ggplot(airline_data, aes(x=satisfaction)) +
+  geom_bar()+
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) # Remove grid 
+g_0
+# The number of records for satisfied vs. satisfied is relatively balanced. Disatisfied customers make up about 45% if the data and positive or satisfied customeres make up the other 55% of records.
+
+g_01 <- ggplot(airline_data, aes(x=Gender)) +
+  geom_bar()+
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) # Remove grid 
+g_01
+# The data is very evenly split between male and female records.
+
+g_02 <- ggplot(airline_data, aes(x=Customer.Type)) +
+  geom_bar()+
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) # Remove grid 
+g_02
+# The data has higher representation of positive records for Customer Type. Loyal customers make up approx 82% of the data.
+
+
+g_03 <- ggplot(airline_data, aes(x=Type.of.Travel)) +
+  geom_bar()+
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) # Remove grid 
+g_03
+# Business travelers make up about 69% of the data.
+
+g_04 <- ggplot(airline_data, aes(x=Class)) +
+  geom_bar()+
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) # Remove grid 
+g_04
+# The amount of data classified as 'Business' or 'Eco' is similar, but 'Eco Plus' makes up only 7% of the data. 
+
+## Numerical Factors
+plot_dat <- airline_data
+plot_dat$satisfaction <- as.factor(plot_dat$satisfaction)
+m_dat <- melt(plot_dat[c(1, 4, 7, 22, 23)], id.vars = "satisfaction") # Melt data to long form
+m_dat$var_2 <- rep("Age", nrow(m_dat)) # Create nicer vector to store feature names
+m_dat$var_2[which(m_dat$variable == "Flight.Distance")] <- "Flight Distance" 
+m_dat$var_2[which(m_dat$variable == "Departure.Delay.in.Minutes")] <- "Departure Delay (min)" 
+m_dat$var_2[which(m_dat$variable == "Arrival.Delay.in.Minutes")] <- "Arrival Delay (min)"
+
+g_1 <- ggplot(m_dat, aes( y = value, x = satisfaction, fill = satisfaction)) + # Set x and fill as satisfaction, y as value
+  geom_boxplot() + # Use boxlot
+  facet_wrap(~var_2, scales = "free") + # Create small multiples
+    theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "satisfaction", title = "Satisfied v Dissatisfied",
+       fill = "satisfaction") +# Set labels
+  scale_fill_manual(values = c("satisfied" = "green", "dissatisfied" = "red"), 
+                    labels = c("satisfied" = "Satisfied", "dissatisfied" = "dissatisfied"))
+g_1 # Generate plot
+# The plots reveal some details about the spread of numerical variables. The mean for age customers who are satisfied is higher than dissatisfied customers. Data fpr Arrical and Departure Delay are severely right skewed since most flights depart on time or close to on time. There are more dissatisfied customers for higher delay times. The mean for flight distance amoung statisfied and dissatisfied customers is about the same.
+
+## Customer Satisfaction Ratings
+plot_dat <- airline_data
+plot_dat$satisfaction <- as.factor(plot_dat$satisfaction)
+m_dat1 <- melt(plot_dat[c(1, 8:21)], id.vars = "satisfaction") # Melt data to long form
+m_dat1$var_2 <- rep("Seat.comfort", nrow(m_dat1)) # Create nicer vector to store feature names
+m_dat1$var_2[which(m_dat1$variable == "Departure.Arrival.time.convenient")] <- "Flight Convenience" 
+m_dat1$var_2[which(m_dat1$variable == "Food.and.drink")] <- "Food and Drink" 
+m_dat1$var_2[which(m_dat1$variable == "Gate.location")] <- "Gate Location"
+m_dat1$var_2[which(m_dat1$variable == "Inflight.wifi.service")] <- "Wifi Service" 
+m_dat1$var_2[which(m_dat1$variable == "Inflight.entertainment")] <- "Entertainment"
+m_dat1$var_2[which(m_dat1$variable == "Online.support")] <- "Online Support" 
+m_dat1$var_2[which(m_dat1$variable == "Ease.of.Online.booking")] <- "Ease of Online Booking"
+m_dat1$var_2[which(m_dat1$variable == "On.board.service")] <- "On Board Service"
+m_dat1$var_2[which(m_dat1$variable == "Leg.room.service")] <- "Leg Room" 
+m_dat1$var_2[which(m_dat1$variable == "Baggage.handling")] <- "Baggage Handling"
+m_dat1$var_2[which(m_dat1$variable == "Checkin.service")] <- "Checkin"
+m_dat1$var_2[which(m_dat1$variable == "Cleanliness")] <- "Cleanliness" 
+m_dat1$var_2[which(m_dat1$variable == "Online.boarding")] <- "Online Boarding"
+
+# Customer Satisfaction Boxplot
+g_11 <- ggplot(m_dat1, aes( y = value, x = satisfaction, fill = satisfaction)) + # Set x and fill as satisfaction, y as value
+  geom_boxplot() + # Use boxlot
+  facet_wrap(~var_2, scales = "free") + # Create small multiples
+    theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "satisfaction", title = "Satisfied v Dissatisfied",
+       fill = "satisfaction") +# Set labels
+  scale_fill_manual(values = c("satisfied" = "green", "dissatisfied" = "red"), 
+                    labels = c("satisfied" = "Satisfied", "dissatisfied" = "dissatisfied"))
+g_11 # Generate plot
+# Generally, the means for satisfied customers are services/experience ratings are higher than disatisffied customers.
+
+# Customer Satisfaction Barchart
+g_111 <- ggplot(m_dat1, aes( x = value, fill = satisfaction)) + # Set x and fill as satisfaction, y as value
+  geom_bar(position = "dodge") + # Use boxlot
+  facet_wrap(~var_2, scales = "free") + # Create small multiples
+    theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "satisfaction", title = "Satisfied v Dissatisfied",
+       fill = "satisfaction") +# Set labels
+  scale_fill_manual(values = c("satisfied" = "green", "dissatisfied" = "red"), 
+                    labels = c("satisfied" = "Satisfied", "dissatisfied" = "dissatisfied"))
+g_111 # Generate plot
+# Most data for satisfied customers is left skewed, where as dissatisfied data is more normally distributed.
+```
+
+
+```{r}
+
+## Numerical Variables Density Distribution
+g_2 <- ggplot(plot_dat, aes(x = Age, fill = satisfaction)) + 
+  geom_density(alpha = 0.5) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Age", title = "Age - satisfied v dissatisfied",
+       fill = "satisfaction") + # Set labels
+  scale_fill_manual(values = c("satisfied" = "green", "dissatisfied" = "red"), 
+                    labels = c("satisfied" = "Satisfied", "dissatisfied" = "dissatisfied"))
+g_2
+# Higher ages ar more likely to be satisfied that lower.
+
+g_3 <- ggplot(plot_dat, aes(x = Flight.Distance, fill = satisfaction)) + 
+  geom_density(alpha = 0.5) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Flight.Distance", title = "Flight Distance - satisfied v dissatisfied",
+       fill = "satisfaction") + # Set labels
+  scale_fill_manual(values = c("satisfied" = "green", "dissatisfied" = "red"), 
+                    labels = c("satisfied" = "Satisfied", "dissatisfied" = "dissatisfied"))
+g_3
+# Lower flight distances are more likely to be satisfied where as density of dissatisfied is higher for trips around 2000 miles.
+
+g_4 <- ggplot(plot_dat, aes(x = log(Departure.Delay.in.Minutes+1), fill = satisfaction)) + 
+  geom_density(alpha = 0.5) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Log Deaparture", title = "Departure Delay (Min) - satisfied v dissatisfied",
+       fill = "satisfaction") + # Set labels
+    scale_fill_manual(values = c("satisfied" = "green", "dissatisfied" = "red"), 
+                    labels = c("satisfied" = "Satisfied", "dissatisfied" = "dissatisfied"))
+g_4
+# Satisfaction is higher for less delayed flights
+
+g_5 <- ggplot(plot_dat, aes(x = log(Arrival.Delay.in.Minutes+1), fill = satisfaction)) + 
+  geom_density(alpha = 0.5) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Log Arrival", title = "Arrival Delay (Min) - satisfied v dissatisfied",
+       fill = "satisfaction") + # Set labels
+  scale_fill_manual(values = c("satisfied" = "green", "dissatisfied" = "red"), 
+                    labels = c("satisfied" = "Satisfied", "dissatisfied" = "dissatisfied"))
+
+g_5
+# Satisfaction is higher for less delayed flights
+
+```
+
+
+## Correlation Plot
+```{r}
+library(corrplot)
+airline_data_corr <- data.frame(airline_data[c(4, 7:23)])
+
+airline_data_corr <- na.omit(airline_data_corr)
+
+summary(airline_data_corr)
+
+air_corr = cor(airline_data_corr)
+
+set.seed(123)
+
+corrplot(air_corr, method = 'color', na.label = FALSE, type = 'lower', diag = FALSE, cl.pos = 'r', tl.pos = 'lower')
+
+# The chart shows variables with high correlation in blue, and negative correlation in red. The most correlated values are Departure Delay and Arrival Delay which makes a lot of sense.
+```
